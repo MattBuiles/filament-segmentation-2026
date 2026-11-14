@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+data/
+kout/
+out/
+out_smoke/
+weights/
+ref/
+chk.csv
+*.log
+kern/*/
+!kern/build_pair.py
+sub_*.csv

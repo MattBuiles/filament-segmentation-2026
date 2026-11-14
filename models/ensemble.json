@@ -1,0 +1,14 @@
+{
+ "models": [
+  {
+   "file": "r34_f2.pt",
+   "res": 1024
+  }
+ ],
+ "postprocess": {
+  "thr": 0.5,
+  "dil": 9,
+  "min_area": 300,
+  "min_max": 0.95
+ }
+}
