@@ -99,8 +99,7 @@ The repository contains the training script, the post-processing and tuning scri
 official self-evaluation notebook, fp16 model weights, a notebook that runs the whole pipeline, and
 \texttt{predict.py}, which regenerates the submission CSV from the weights without retraining. Training ran as Kaggle
 script kernels on T4 GPUs; \texttt{requirements.txt} pins the versions used for inference.
-We checked that \texttt{predict.py} on CPU with fp16 weights reproduces the masks computed on the GPU (IoU at least 0.999 on all
-tested instances).
+We checked that \texttt{predict.py} on CPU with fp16 weights reproduces the submitted file: same 1212 filament identifiers, mean mask IoU 0.9997 (minimum 0.993) against the GPU-computed predictions.
 
 \section{Limitations}\label{sec:limits}
 \begin{itemize}\itemsep0pt
