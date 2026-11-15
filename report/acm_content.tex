@@ -5,12 +5,14 @@
 % Needs no extra packages: tables use plain tabular (\hline).
 
 %%%%%%%%%% PART A: abstract %%%%%%%%%%
-We train a U-Net with an ImageNet ResNet34 encoder to predict a per-pixel filament probability on $1024^2$ downsampled
-H-alpha images, and convert it into one mask per filament with a threshold, a connected-component analysis on a dilated
-mask, and size and confidence filters tuned on Panoptic Quality (PQ). The method is deliberately simple. Most of the
-gain over a plain U-Net came from the post-processing, not from the network, and several ideas that looked promising
-(illumination flattening, higher resolution, Tversky loss, majority-vote targets, ensembling) did not help on our
-validation split. Final model: the average of three such networks trained for 80 epochs on all training data with different seeds. Public leaderboard score: \textbf{0.37} (0.36 for a single network; see Section~\ref{sec:limits} for caveats).
+We train a U-Net with an ImageNet ConvNeXt-Tiny encoder to predict a per-pixel filament probability on $1024^2$
+downsampled H-alpha images, and convert it into one mask per filament with a threshold, a connected-component analysis on
+a dilated mask, and size and confidence filters tuned on Panoptic Quality (PQ). The method is deliberately simple. The
+encoder was the most useful change over a ResNet34 baseline (about +0.02 validation PQ), and the post-processing added
+more than any other single step; several ideas that looked promising (illumination flattening, higher resolution, Tversky
+loss, majority-vote targets, a larger ResNet) did not help on our validation split. Final model: the average of three
+ConvNeXt-Tiny networks trained on all training data with different seeds. Public leaderboard score:
+\textbf{0.39} (0.37 for a single such network; see Section~\ref{sec:limits} for caveats).
 
 %%%%%%%%%% PART B: body %%%%%%%%%%
 \section{Data and targets}
@@ -28,34 +30,35 @@ observations) is held out. Contiguous blocks keep near-duplicate neighbouring ob
 All annotator versions of an observation stay together.
 
 \section{Model and training}
-\textbf{Network.} U-Net, ResNet34 encoder (torchvision, ImageNet weights), five decoder blocks with bilinear upsampling
-and skip connections, one-channel output. Input: the grayscale image standardised per image (zero mean, unit variance)
-and replicated to three channels.
+\textbf{Network.} U-Net from \texttt{segmentation\_models\_pytorch} with a ConvNeXt-Tiny encoder (timm, ImageNet weights).
+Input: the grayscale image standardised per image (zero mean, unit variance) and replicated to three channels. Our
+first models used a ResNet34 encoder with a decoder written directly on torchvision; both are in the repository.
 
 \textbf{Loss and optimisation.} Binary cross-entropy (positive weight 4) plus soft Dice on the soft target; AdamW,
-learning rate $3\!\times\!10^{-4}$ with a one-cycle schedule, batch size 4, mixed precision with gradient clipping
-with a gradient scaler and gradient clipping at norm 1. Training uses random
-$640^2$ crops of the $1024^2$ image with rotation in $[-180^\circ,180^\circ]$, scale in $[0.8,1.25]$, flips and random
-brightness/contrast. 40 to 80 epochs, about 26 minutes for 40 epochs on one NVIDIA T4.
+learning rate $3\!\times\!10^{-4}$ with a one-cycle schedule, batch size 4, mixed precision with a gradient scaler and
+gradient clipping at norm 1. Training uses random $640^2$ crops of the $1024^2$ image with rotation in
+$[-180^\circ,180^\circ]$, scale in $[0.8,1.25]$, flips and random brightness/contrast. The ResNet34 runs took about 26
+minutes for 40 epochs on one NVIDIA T4, the ConvNeXt-Tiny runs about 53 minutes for 60 epochs.
 
 \textbf{Inference.} Full $1024^2$ image, test-time augmentation with four flips (identity, horizontal, vertical,
-both), sigmoid probabilities averaged.
+both), sigmoid probabilities averaged over flips and over the networks of the ensemble.
 
 \section{Post-processing for PQ}
 PQ counts a predicted filament as correct only if its IoU with a reference filament exceeds 0.5, and it charges one half
 for every unmatched prediction and every missed reference. Both fragmenting a filament and merging two filaments therefore
 hurt. The probability map is resized to $2048^2$ and processed as follows:
-(1) threshold $p>0.4$; (2) dilate the binary mask with a $15\times15$ kernel \emph{only to decide connectivity}, so that
+(1) threshold $p>0.45$; (2) dilate the binary mask with a $9\times9$ kernel \emph{only to decide connectivity}, so that
 fragments of one filament separated by small gaps receive the same label; (3) label connected components on the dilated
 mask but keep only the original (undilated) pixels of each component; (4) discard components with fewer than 300 pixels,
-with maximum probability below 0.9, or with mean probability below 0.8. Each surviving component is encoded as one
-column-major RLE row. The parameters were chosen by grid search on validation PQ.
+with maximum probability below 0.9, or with mean probability below 0.85. Each surviving component is encoded as one
+column-major RLE row. The parameters were chosen by grid search on validation PQ; the best settings were a plateau
+rather than a sharp optimum (the eight best combinations lie within 0.004 PQ).
 
 \section{Experiments}
 Table~\ref{tab:exp} lists every variant we trained, all on the same split. ``Default'' post-processing is
 (threshold 0.6, dilation 9, area $\ge50$); ``tuned'' is (0.5, 9, $\ge300$, max probability $\ge0.95$). The first
-post-processing search, which tuned these four numbers, raised the validation PQ of the baseline from 0.377 to 0.421.
-Adding the mean-probability filter and a wider search raised the best model to 0.440.
+post-processing search, which tuned these four numbers, raised the validation PQ of the ResNet34 baseline from 0.377
+to 0.421.
 
 \begin{table*}[t]
 \centering\small
@@ -68,43 +71,56 @@ ResNet34 U-Net, 40 epochs (baseline) & 0.377 & 0.421\\
 \quad + majority-vote hard target & 0.362 & 0.414\\
 \quad + Tversky loss ($\alpha{=}0.7$ on false positives) & 0.333 & 0.385\\
 \quad at $1536^2$ resolution, $768^2$ crops & 0.374 & 0.421\\
-ResNet34 U-Net, 80 epochs & \textbf{0.382} & \textbf{0.427}\\
-Average of baseline, flattening and majority models & -- & 0.425\\
-Average of the above and the 80-epoch model & -- & 0.425\\
+ResNet34 U-Net, 80 epochs & 0.382 & 0.427\\
+ResNet50 U-Net, 60 epochs & 0.382 & 0.422\\
+\textbf{ConvNeXt-Tiny U-Net, 60 epochs} & \textbf{0.405} & \textbf{0.449}\\
+Average of three ResNet34 variants & -- & 0.425\\
+Average of those and the 80-epoch ResNet34 & -- & 0.425\\
 \hline
-80 epochs, final post-processing (0.4, 15, 300, 0.9, mean 0.8) & \multicolumn{2}{c}{\textbf{0.440}}\\
-Same, average of four models & \multicolumn{2}{c}{0.437}\\
+\multicolumn{3}{l}{With the final post-processing of ConvNeXt (0.45, 9, 300, 0.9, mean 0.85):}\\
+ConvNeXt-Tiny, 60 epochs & \multicolumn{2}{c}{\textbf{0.454}}\\
+ResNet34, 80 epochs & \multicolumn{2}{c}{0.442}\\
 \hline
 \end{tabular}
 \caption{Single runs, one seed each; differences below about 0.01 should not be read as real. The two averaging rows use
-threshold 0.45 and maximum-probability filter 0.9 instead of the exact ``tuned'' values.}
+threshold 0.45 and maximum-probability filter 0.9 instead of the exact ``tuned'' values. Averaging ConvNeXt with the
+80-epoch ResNet34 gave 0.451, and with the 80-epoch ResNet34 and the ResNet50 0.450, both at an earlier post-processing
+setting (0.4, 15, 300, 0.9, mean 0.8) at which ConvNeXt alone scored 0.452.}
 \label{tab:exp}
 \end{table*}
 
-\textbf{Findings.} (i) Longer training helped slightly and the curve was still rising at 40 epochs. (ii) Higher
-resolution, illumination flattening and majority-vote targets did not improve over the baseline. (iii) The Tversky loss
-was worse; it also shifts the calibration of the probabilities, so its default-parameter score is not a fair
-comparison, but it stayed behind after tuning. (iv) Averaging models gave no gain over the best single model on
-validation, for which a plausible, untested explanation is that all models share one architecture and recipe and that label noise sets the ceiling.
-(v) On the public leaderboard, averaging three all-data models with different seeds scored 0.37 against 0.36 for a single model, a difference at the resolution of the displayed score and measured on about half of the test images; averaging five models, including the flattening and majority-vote variants, also scored 0.37.
-(v) Adding a filter on the mean probability of each component to a wider search of the post-processing parameters raised
-validation PQ of the 80-epoch model from 0.427 to 0.440; we did not ablate the filter on its own.
+\textbf{Findings.} (i) Longer training helped slightly and the curve was still rising at 40 epochs for ResNet34.
+(ii) Higher resolution, illumination flattening and majority-vote targets did not improve over the baseline.
+(iii) The Tversky loss was worse; it also shifts the calibration of the probabilities, so its default-parameter score is
+not a fair comparison, but it stayed behind after tuning. (iv) The ConvNeXt-Tiny encoder was the one change that moved
+the score clearly (+0.02 default, +0.02 tuned over the 80-epoch ResNet34), while a larger ResNet (ResNet50) gave
+nothing. With the same post-processing ConvNeXt stayed ahead (0.452 against 0.440), so its advantage is not an artefact
+of the parameter search. (v) Averaging different models gave no gain on validation. On the public leaderboard, averaging
+three ConvNeXt-Tiny seeds scored 0.39 against 0.37 for a single one, and three ResNet34 seeds scored 0.37 against 0.36
+for one; each difference is at or near the resolution of the displayed score and is measured on about half of the test
+images, and we could not validate seed averaging on our split because only one ConvNeXt-Tiny network was trained
+without fold 2. (vi) Adding a filter on the mean probability of each component to a wider search of the post-processing
+parameters raised validation PQ of the 80-epoch ResNet34 from 0.427 to 0.440; we did not ablate the filter on its own.
 
 \section{Reproducibility}
 The repository contains the training script, the post-processing and tuning scripts, an exact PQ scorer matching the
-official self-evaluation notebook, fp16 model weights, a notebook that runs the whole pipeline, and
+official self-evaluation notebook, fp16 model weights, an executed notebook that runs the whole pipeline, and
 \texttt{predict.py}, which regenerates the submission CSV from the weights without retraining. Training ran as Kaggle
 script kernels on T4 GPUs; \texttt{requirements.txt} pins the versions used for inference.
-We checked that \texttt{predict.py} on CPU with fp16 weights reproduces the submitted file: same 1212 filament identifiers, mean mask IoU 0.9997 (minimum 0.993) against the GPU-computed predictions.
+Checks that \texttt{predict.py} on CPU with fp16 weights reproduces the GPU-computed predictions: for the ResNet34
+ensemble, the full test set gives the same 1212 filament identifiers as the submitted file with mean mask IoU 0.9997
+(minimum 0.993); for the ConvNeXt-Tiny ensemble, the notebook regenerates the 1114 filaments of the submission within one
+instance of the 1113 submitted, and a three-image comparison gave a minimum IoU of 0.9992.
 
 \section{Limitations}\label{sec:limits}
 \begin{itemize}
 \item The post-processing parameters were selected on the same 142 validation observations used to report their
-score, so the 0.440 validation figure is optimistic. The corresponding public leaderboard score is lower (0.36 for one model, 0.37 for the final average of three), which
-also reflects that the public score uses about half of the test images and a different annotator pairing.
+score, so the validation figures are optimistic. The corresponding public leaderboard score is lower (0.39 for the final
+ensemble), which also reflects that the public score uses about half of the test images and a different annotator
+pairing.
 \item All comparisons are single runs; seed-to-seed variation was not measured.
 \item Fine structures such as barbs are limited by working at $1024^2$ and by annotator disagreement; the higher
-resolution we tried did not help, but we did not explore resolution-specific tuning.
+resolution we tried (with a ResNet34) did not help, and we did not test it with the ConvNeXt encoder.
 \item Our best validation PQ is above the 0.345 inter-annotator PQ, which shows how noisy the reference is rather than
 that the model exceeds human agreement.
 \end{itemize}

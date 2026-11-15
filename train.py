@@ -51,11 +51,17 @@ def load_xy():
     X, Y = [], []
     for f in files:
         img = cv2.imread(f"{ROOT}/train/train_images/{f}", cv2.IMREAD_GRAYSCALE)
-        t = np.zeros((2048, 2048), np.float32)
-        for polys in per[f].values():  # soft target = fraction of annotators marking the pixel
+        views = []
+        for polys in per[f].values():  # one binary mask per annotator view
+            m = np.zeros((2048, 2048), np.float32)
             for p in polys:
-                t += mu.decode(mu.merge(mu.frPyObjects(p, 2048, 2048)))
-        t /= len(per[f])
+                m = np.maximum(m, mu.decode(mu.merge(mu.frPyObjects(p, 2048, 2048))))
+            views.append(m)
+        if TGT == "view":  # train on a random single annotator view each time (no consensus)
+            X.append(prep(img))
+            Y.append(np.stack([cv2.resize(m, (RES, RES), interpolation=cv2.INTER_AREA) for m in views]).astype(np.float16))
+            continue
+        t = np.mean(views, 0)  # soft target = fraction of annotators marking the pixel
         if TGT == "maj":
             t = (t >= 0.5).astype(np.float32)
         X.append(prep(img))
@@ -210,7 +216,7 @@ def main():
         order = rng.permutation(tr)
         tot = 0
         for b in range(len(tr) // BS):
-            ib, tb = zip(*[augment(X[i], Y[i]) for i in order[b * BS : (b + 1) * BS]])
+            ib, tb = zip(*[augment(X[i], Y[i][rng.integers(len(Y[i]))] if TGT == "view" else Y[i]) for i in order[b * BS : (b + 1) * BS]])
             x, t = to_in(torch.from_numpy(np.stack(ib))).to(dev), torch.from_numpy(np.stack(tb))[:, None].to(dev)
             with torch.autocast(dev, enabled=dev == "cuda"):
                 lg = model(x)

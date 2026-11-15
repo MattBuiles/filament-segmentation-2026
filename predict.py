@@ -39,6 +39,14 @@ class UNet(nn.Module):
         return self.head(self.d0(F.interpolate(d, scale_factor=2, mode="bilinear", align_corners=False)))
 
 
+def build(arch=None):
+    """None = the torchvision ResNet34 U-Net above; otherwise a segmentation_models_pytorch Unet encoder name."""
+    if arch is None:
+        return UNet()
+    import segmentation_models_pytorch as smp
+    return smp.Unet(arch, encoder_weights=None, in_channels=3, classes=1)
+
+
 def prep(img, res, flat):
     img = cv2.resize(img, (res, res), interpolation=cv2.INTER_AREA)
     if flat:  # divide out limb darkening with a heavy blur of the image itself
@@ -91,7 +99,7 @@ def main():
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     models = []
     for m in cfg["models"]:
-        net = UNet().to(dev).eval()
+        net = build(m.get("arch")).to(dev).eval()
         net.load_state_dict({k: v.float() for k, v in torch.load(f"{base}/{m['file']}", map_location=dev, weights_only=True).items()})
         models.append((net, m["res"], m.get("flat", False)))
     files = sorted(os.listdir(a.images))[: a.limit or None]
