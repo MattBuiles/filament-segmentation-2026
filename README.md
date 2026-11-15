@@ -22,5 +22,13 @@ python predict.py --images MAGFiLO_1.0_Kaggle_2026/test/test_images --config mod
 Weights are in `models/` (fp16). Training ran as Kaggle script kernels (`kern/build_pair.py` builds them) on T4 GPUs;
 PyTorch there was 2.11, locally the versions in `requirements.txt`.
 
-## Results (fold-2 validation, PQ over every annotator image)
-See `report/` for the numbers of each experiment.
+## Results
+- Final model: average of three 80-epoch U-Nets trained on all data (`models/e80all.pt`, `a2.pt`, `a5.pt`),
+  post-processing `thr 0.4, dilation 15, min area 300, max prob >= 0.9, mean prob >= 0.8`.
+  Public leaderboard PQ 0.37 (single model 0.36, first baseline with untuned post-processing 0.30).
+- Validation (fold 2 held out, PQ over every annotator image): 0.440 for the 80-epoch model with the final
+  post-processing; this is optimistic because the post-processing was tuned on the same images. Two annotators scored
+  against each other give 0.345.
+- Variants that did not help (illumination flattening, 1536 px, Tversky loss, majority-vote targets, model averaging on
+  validation) and all numbers are in `report/report.tex`. `models/e80f2.pt` is the model that never saw fold 2, used by
+  the validation check in `pipeline.ipynb`.

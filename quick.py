@@ -8,7 +8,7 @@ gt = {f: [fil.instance_rles(anns[i]) for i in by_file[f]] for f in files}
 def pq(ds):
     probs = post.mean_probs(ds, "val"); s = tp = fp = fn = 0
     for f, p in zip(files, probs):
-        rl = post.keep(post.components(p, thr, dil), ma, mm)
+        rl = post.keep(post.components(p, thr, dil), ma, mm, float(__import__('os').environ.get('MINMEAN', 0)))
         for g in gt[f]:
             a, b, c, d = fil.pq_counts(g, rl); s, tp, fp, fn = s + a, tp + b, fp + c, fn + d
     return s / (tp + 0.5 * fp + 0.5 * fn)

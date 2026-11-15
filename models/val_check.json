@@ -1,0 +1,15 @@
+{
+ "models": [
+  {
+   "file": "e80f2.pt",
+   "res": 1024
+  }
+ ],
+ "postprocess": {
+  "thr": 0.4,
+  "dil": 15,
+  "min_area": 300,
+  "min_max": 0.9,
+  "min_mean": 0.8
+ }
+}

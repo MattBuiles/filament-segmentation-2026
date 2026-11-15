@@ -60,7 +60,7 @@ def predict(model, x, dev):
     return (acc / 4)[0, 0].cpu().numpy()
 
 
-def instances(p, thr, dil, min_area, min_max):
+def instances(p, thr, dil, min_area, min_max, min_mean=0.0):
     """Components of the thresholded map found on a dilated mask; only original pixels are kept, as RLE at 2048x2048."""
     p = cv2.resize(p, (2048, 2048), interpolation=cv2.INTER_LINEAR)
     m = (p > thr).astype(np.uint8)
@@ -70,7 +70,8 @@ def instances(p, thr, dil, min_area, min_max):
     for k in range(1, n):
         x, y, w, h = st[k, :4]
         sub = (lab[y : y + h, x : x + w] == k) & (m[y : y + h, x : x + w] > 0)
-        if sub.sum() < min_area or p[y : y + h, x : x + w][sub].max() < min_max:
+        v = p[y : y + h, x : x + w][sub]
+        if sub.sum() < min_area or v.max() < min_max or v.mean() < min_mean:
             continue
         full = np.zeros((2048, 2048), np.uint8)
         full[y : y + h, x : x + w] = sub

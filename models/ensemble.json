@@ -1,14 +1,23 @@
 {
  "models": [
   {
-   "file": "r34_f2.pt",
+   "file": "e80all.pt",
+   "res": 1024
+  },
+  {
+   "file": "a2.pt",
+   "res": 1024
+  },
+  {
+   "file": "a5.pt",
    "res": 1024
   }
  ],
  "postprocess": {
-  "thr": 0.5,
-  "dil": 9,
+  "thr": 0.4,
+  "dil": 15,
   "min_area": 300,
-  "min_max": 0.95
+  "min_max": 0.9,
+  "min_mean": 0.8
  }
 }

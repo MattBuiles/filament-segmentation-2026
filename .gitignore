@@ -11,3 +11,9 @@ chk.csv
 kern/*/
 !kern/build_pair.py
 sub_*.csv
+scratch/
+lb/
+q*.log
+ens3_*.log
+tune*.log
+sub_*.csv
