@@ -1,0 +1,111 @@
+% Content for the official Overleaf template (acmart, sigconf).
+% 1) In main.tex replace the guide abstract text with PART A (keep the existing first sentence if you prefer).
+% 2) Delete the gray guide text and paste PART B after \maketitle; set \guideStylefalse.
+% 3) Title/author/email/affiliation are yours to fill; the subtitle must stay unchanged.
+% Needs no extra packages: tables use plain tabular (\hline).
+
+%%%%%%%%%% PART A: abstract %%%%%%%%%%
+We train a U-Net with an ImageNet ResNet34 encoder to predict a per-pixel filament probability on $1024^2$ downsampled
+H-alpha images, and convert it into one mask per filament with a threshold, a connected-component analysis on a dilated
+mask, and size and confidence filters tuned on Panoptic Quality (PQ). The method is deliberately simple. Most of the
+gain over a plain U-Net came from the post-processing, not from the network, and several ideas that looked promising
+(illumination flattening, higher resolution, Tversky loss, majority-vote targets, ensembling) did not help on our
+validation split. Final model: the average of three such networks trained for 80 epochs on all training data with different seeds. Public leaderboard score: \textbf{0.37} (0.36 for a single network; see Section~\ref{sec:limits} for caveats).
+
+%%%%%%%%%% PART B: body %%%%%%%%%%
+\section{Data and targets}
+Training data: 707 observations, 1154 annotated images (one to three annotators per observation), 8199 polygons.
+Test: 180 images, $2048^2$, grayscale.
+
+\textbf{Target.} Polygons are rasterised with the same pycocotools routine the scorer uses (\texttt{frPyObjects}); this
+matters because rasterising with \texttt{cv2.fillPoly} shifts edges by a pixel and costs PQ. For each observation the
+target is the \emph{fraction of annotators} who marked a pixel (a soft target in $[0,1]$), downsampled to $1024^2$ with
+area interpolation. Annotators disagree strongly: scoring one annotator's masks against another's on the training set
+gives PQ $=0.345$, which bounds what any model can expect against a single human reference.
+
+\textbf{Validation.} Observations are sorted by capture time and split into five contiguous blocks; block 2 (142
+observations) is held out. Contiguous blocks keep near-duplicate neighbouring observations on the same side of the split.
+All annotator versions of an observation stay together.
+
+\section{Model and training}
+\textbf{Network.} U-Net, ResNet34 encoder (torchvision, ImageNet weights), five decoder blocks with bilinear upsampling
+and skip connections, one-channel output. Input: the grayscale image standardised per image (zero mean, unit variance)
+and replicated to three channels.
+
+\textbf{Loss and optimisation.} Binary cross-entropy (positive weight 4) plus soft Dice on the soft target; AdamW,
+learning rate $3\!\times\!10^{-4}$ with a one-cycle schedule, batch size 4, mixed precision with gradient clipping
+with a gradient scaler and gradient clipping at norm 1. Training uses random
+$640^2$ crops of the $1024^2$ image with rotation in $[-180^\circ,180^\circ]$, scale in $[0.8,1.25]$, flips and random
+brightness/contrast. 40 to 80 epochs, about 26 minutes for 40 epochs on one NVIDIA T4.
+
+\textbf{Inference.} Full $1024^2$ image, test-time augmentation with four flips (identity, horizontal, vertical,
+both), sigmoid probabilities averaged.
+
+\section{Post-processing for PQ}
+PQ counts a predicted filament as correct only if its IoU with a reference filament exceeds 0.5, and it charges one half
+for every unmatched prediction and every missed reference. Both fragmenting a filament and merging two filaments therefore
+hurt. The probability map is resized to $2048^2$ and processed as follows:
+(1) threshold $p>0.4$; (2) dilate the binary mask with a $15\times15$ kernel \emph{only to decide connectivity}, so that
+fragments of one filament separated by small gaps receive the same label; (3) label connected components on the dilated
+mask but keep only the original (undilated) pixels of each component; (4) discard components with fewer than 300 pixels,
+with maximum probability below 0.9, or with mean probability below 0.8. Each surviving component is encoded as one
+column-major RLE row. The parameters were chosen by grid search on validation PQ.
+
+\section{Experiments}
+Table~\ref{tab:exp} lists every variant we trained, all on the same split. ``Default'' post-processing is
+(threshold 0.6, dilation 9, area $\ge50$); ``tuned'' is (0.5, 9, $\ge300$, max probability $\ge0.95$). The first
+post-processing search, which tuned these four numbers, raised the validation PQ of the baseline from 0.377 to 0.421.
+Adding the mean-probability filter and a wider search raised the best model to 0.440.
+
+\begin{table*}[t]
+\centering\small
+\begin{tabular}{lcc}
+\hline
+Variant (fold-2 validation, PQ over all annotator images) & default & tuned\\
+\hline
+ResNet34 U-Net, 40 epochs (baseline) & 0.377 & 0.421\\
+\quad + illumination flattening (divide by blurred image) & 0.373 & 0.415\\
+\quad + majority-vote hard target & 0.362 & 0.414\\
+\quad + Tversky loss ($\alpha{=}0.7$ on false positives) & 0.333 & 0.385\\
+\quad at $1536^2$ resolution, $768^2$ crops & 0.374 & 0.421\\
+ResNet34 U-Net, 80 epochs & \textbf{0.382} & \textbf{0.427}\\
+Average of baseline, flattening and majority models & -- & 0.425\\
+Average of the above and the 80-epoch model & -- & 0.425\\
+\hline
+80 epochs, final post-processing (0.4, 15, 300, 0.9, mean 0.8) & \multicolumn{2}{c}{\textbf{0.440}}\\
+Same, average of four models & \multicolumn{2}{c}{0.437}\\
+\hline
+\end{tabular}
+\caption{Single runs, one seed each; differences below about 0.01 should not be read as real. The two averaging rows use
+threshold 0.45 and maximum-probability filter 0.9 instead of the exact ``tuned'' values.}
+\label{tab:exp}
+\end{table*}
+
+\textbf{Findings.} (i) Longer training helped slightly and the curve was still rising at 40 epochs. (ii) Higher
+resolution, illumination flattening and majority-vote targets did not improve over the baseline. (iii) The Tversky loss
+was worse; it also shifts the calibration of the probabilities, so its default-parameter score is not a fair
+comparison, but it stayed behind after tuning. (iv) Averaging models gave no gain over the best single model on
+validation, for which a plausible, untested explanation is that all models share one architecture and recipe and that label noise sets the ceiling.
+(v) On the public leaderboard, averaging three all-data models with different seeds scored 0.37 against 0.36 for a single model, a difference at the resolution of the displayed score and measured on about half of the test images; averaging five models, including the flattening and majority-vote variants, also scored 0.37.
+(v) Adding a filter on the mean probability of each component to a wider search of the post-processing parameters raised
+validation PQ of the 80-epoch model from 0.427 to 0.440; we did not ablate the filter on its own.
+
+\section{Reproducibility}
+The repository contains the training script, the post-processing and tuning scripts, an exact PQ scorer matching the
+official self-evaluation notebook, fp16 model weights, a notebook that runs the whole pipeline, and
+\texttt{predict.py}, which regenerates the submission CSV from the weights without retraining. Training ran as Kaggle
+script kernels on T4 GPUs; \texttt{requirements.txt} pins the versions used for inference.
+We checked that \texttt{predict.py} on CPU with fp16 weights reproduces the masks computed on the GPU (IoU at least 0.999 on all
+tested instances).
+
+\section{Limitations}\label{sec:limits}
+\begin{itemize}
+\item The post-processing parameters were selected on the same 142 validation observations used to report their
+score, so the 0.440 validation figure is optimistic. The corresponding public leaderboard score is lower (0.36 for one model, 0.37 for the final average of three), which
+also reflects that the public score uses about half of the test images and a different annotator pairing.
+\item All comparisons are single runs; seed-to-seed variation was not measured.
+\item Fine structures such as barbs are limited by working at $1024^2$ and by annotator disagreement; the higher
+resolution we tried did not help, but we did not explore resolution-specific tuning.
+\item Our best validation PQ is above the 0.345 inter-annotator PQ, which shows how noisy the reference is rather than
+that the model exceeds human agreement.
+\end{itemize}

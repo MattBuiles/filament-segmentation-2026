@@ -24,6 +24,7 @@ FOLD, EPOCHS = int(E("FOLD", "2")), int(E("EPOCHS", "40"))
 RES, CROP, BS = int(E("RES", "1024")), int(E("CROP", "640")), int(E("BS", "4"))
 SEED = int(E("SEED", "0"))
 FLAT, LOSS, TGT = E("FLAT") == "1", E("LOSS", "dice"), E("TGT", "soft")
+ARCH = E("ARCH", "resnet34")  # resnet34 = torchvision U-Net below; anything else is a segmentation_models_pytorch Unet encoder name
 BUDGET = float(E("BUDGET", "0"))  # seconds of training before stopping early; 0 = no limit
 OUT = E("OUT", "/kaggle/working" if os.path.isdir("/kaggle/working") else "out")
 if SMOKE:
@@ -192,9 +193,13 @@ def main():
             g[fname[a["image_id"]]][a["image_id"]].append(mu.merge(mu.frPyObjects(a["segmentation"], 2048, 2048)))
         per_gt = {files[i]: list(g[files[i]].values()) for i in va}
 
-    w = glob.glob("/kaggle/input/**/resnet34*.pth", recursive=True) + glob.glob("weights/resnet34*.pth")
-    model = UNet(None if SMOKE or not w else w[0]).to(dev)
-    print("pretrained:", None if SMOKE or not w else w[0], flush=True)
+    if ARCH == "resnet34":
+        w = glob.glob("/kaggle/input/**/resnet34*.pth", recursive=True) + glob.glob("weights/resnet34*.pth")
+        model = UNet(None if SMOKE or not w else w[0]).to(dev)
+        print("pretrained:", None if SMOKE or not w else w[0], flush=True)
+    else:  # needs internet for the ImageNet weights (timm / torchvision hubs)
+        import segmentation_models_pytorch as smp
+        model = smp.Unet(ARCH, encoder_weights=None if SMOKE else "imagenet", in_channels=3, classes=1).to(dev)
     opt = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=1e-4)
     steps = EPOCHS * (len(tr) // BS)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=3e-4, total_steps=steps, pct_start=0.05)
