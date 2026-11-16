@@ -1,0 +1,26 @@
+{
+ "models": [
+  {
+   "file": "cnall.pt",
+   "res": 1024,
+   "arch": "tu-convnext_tiny"
+  },
+  {
+   "file": "cn11.pt",
+   "res": 1024,
+   "arch": "tu-convnext_tiny"
+  },
+  {
+   "file": "cn12.pt",
+   "res": 1024,
+   "arch": "tu-convnext_tiny"
+  }
+ ],
+ "postprocess": {
+  "thr": 0.45,
+  "dil": 9,
+  "min_area": 300,
+  "min_max": 0.9,
+  "min_mean": 0.85
+ }
+}

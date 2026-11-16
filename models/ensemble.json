@@ -14,6 +14,16 @@
    "file": "cn12.pt",
    "res": 1024,
    "arch": "tu-convnext_tiny"
+  },
+  {
+   "file": "cn13.pt",
+   "res": 1024,
+   "arch": "tu-convnext_tiny"
+  },
+  {
+   "file": "cn14.pt",
+   "res": 1024,
+   "arch": "tu-convnext_tiny"
   }
  ],
  "postprocess": {

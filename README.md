@@ -1,7 +1,7 @@
 # Solar Filament Segmentation Challenge 2026
 
 U-Net trained on MAGFiLO H-alpha images, with instance post-processing for the Panoptic Quality metric. Final model:
-average of three ConvNeXt-Tiny encoders trained on all data. Entry for
+average of five ConvNeXt-Tiny encoders trained on all data. Entry for
 https://www.kaggle.com/competitions/filament-segmentation-2026.
 
 ## Pipeline
@@ -22,16 +22,19 @@ https://www.kaggle.com/competitions/filament-segmentation-2026.
 pip install -r requirements.txt
 python predict.py --images MAGFiLO_1.0_Kaggle_2026/test/test_images --config models/ensemble.json --out submission.csv
 ```
-`models/ensemble.json` is the final ConvNeXt-Tiny ensemble (fp16 weights `cnall.pt`, `cn11.pt`, `cn12.pt`).
+`models/ensemble.json` is the final ConvNeXt-Tiny ensemble (fp16 weights `cnall.pt`, `cn11.pt`, `cn12.pt`, `cn13.pt`, `cn14.pt`); `models/ensemble_cn3.json` is the three-network subset (also public 0.39).
 `models/ensemble_resnet34_E3.json` reproduces an earlier ResNet34 ensemble (public 0.37). `models/cnf2.pt` is the
 ConvNeXt network that never saw fold 2, used by the validation check in the notebook. Training ran as Kaggle script
 kernels (`kern/build_pair.py` builds them) on T4 GPUs; PyTorch there was 2.11, locally the versions in `requirements.txt`.
 
 ## Results
-- Public leaderboard PQ: 0.39 for the three-network ConvNeXt-Tiny average (0.37 for one network; ResNet34 ensemble
-  0.37; first ResNet34 baseline with untuned post-processing 0.30).
+- Public leaderboard PQ: 0.39 for both the five- and the three-network ConvNeXt-Tiny average (0.37 for one network;
+  ResNet34 ensemble 0.37; first ResNet34 baseline with untuned post-processing 0.30).
 - Validation (fold 2 held out, PQ over every annotator image): 0.454 for a single ConvNeXt-Tiny with the final
   post-processing; optimistic because the post-processing was tuned on the same images. Two annotators scored against
   each other give 0.345.
 - Variants that did not help (illumination flattening, 1536 px, Tversky loss, majority-vote targets, ResNet50, model
-  averaging on validation) and all numbers are in `report/report.tex`.
+  averaging on validation) and all numbers are in `report/acm_content.tex` (content for the official ACM template) and its figures.
+
+`submission_final.csv` is the file submitted to Kaggle for the five-network ensemble (`submission_cn3.csv`: three networks).
+Regenerating it with `predict.py` gives the same filaments up to one or two threshold-edge instances (fp16 weights on CPU).
