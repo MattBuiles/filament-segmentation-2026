@@ -38,3 +38,23 @@ kernels (`kern/build_pair.py` builds them) on T4 GPUs; PyTorch there was 2.11, l
 
 `submission_final.csv` is the file submitted to Kaggle for the five-network ensemble (`submission_cn3.csv`: three networks).
 Regenerating it with `predict.py` gives the same filaments up to one or two threshold-edge instances (fp16 weights on CPU).
+
+## Submitted state
+The state delivered to the competition is the git tag `submission-2026-11-15` (five ConvNeXt-Tiny networks, public PQ 0.39).
+Commits after that tag only add documentation and analysis tools; code and weights used for the submission are unchanged.
+
+## Analysis tools
+- `tools/bootstrap_ci.py` - paired bootstrap of validation PQ (intervals quoted in the report).
+- `tools/make_figures.py` - pipeline diagram and example figure of the report.
+- `tune.py`, `tune2.py`, `quick.py` - post-processing grid search and quick PQ checks on saved probability maps.
+- `kern/build_pair.py` - builds a Kaggle kernel that trains two networks in parallel, one per T4.
+
+## What worked and what did not
+Worked: replicating the scorer exactly (pycocotools rasterisation; annotator-vs-annotator PQ of 0.345 as a sanity check),
+validating on contiguous date blocks, soft targets from the annotators' agreement, saving probability maps so that the
+post-processing could be tuned on CPU (the biggest jump, +0.044 validation PQ), confidence/area filters per component,
+and the ConvNeXt-Tiny encoder (+0.012 paired bootstrap, 95% interval [0.004, 0.022]).
+Did not help: illumination flattening, 1536 px inputs, Tversky loss, majority-vote targets, ResNet50, ConvNeXt-Small
+(no gain; its fp16 weights also exceed GitHub's 100 MB file limit) and averaging different architectures.
+Validation numbers are optimistic (post-processing tuned on the same split) and the public leaderboard is lower
+(0.45 validation vs 0.39 public). Details and caveats are in the report.
